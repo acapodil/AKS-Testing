@@ -1,0 +1,69 @@
+
+trigger:
+- main
+
+resources:
+- repo: self
+
+variables:
+  imageRepo: sampleapp
+  tag: '$(Build.BuildId)'
+  acrsecret: sampleapp-pw
+
+stages:
+- stage: Build
+  displayName: Build image
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: Docker@2
+      displayName: Build Image and Push to ACR
+      inputs:
+        containerRegistry: 'ACR Service Connection'
+        repository: '$(imageRepo)'
+        command: 'buildAndPush'
+        Dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
+        tags: |
+          $(tag)
+          latest
+#the below makes manifests able to be referenced throughout the rest of the template (other steps)
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.SourcesDirectory)/kubernetes'
+        artifact: 'manifests'
+        publishLocation: 'pipeline'
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - job: Deploy
+    displayName: Deploy to AKS
+    pool: 
+      vmImage: ubuntu-latest
+    steps:
+#the below downloads the pipeline manifests we made available in the 'publishPiplelineArtifact' Task    
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        buildType: 'current'
+        artifactName: 'manifests'
+        targetPath: '$(Pipeline.Workspace)/manifests'
+
+#the below creates a kubernetes secret inside the AKS cluster
+    - task: KubernetesManifest@0
+      inputs:
+        action: 'createSecret'
+        kubernetesServiceConnection: 'AKS Service Connection'
+        namespace: 'default'
+        secretType: 'dockerRegistry'
+        secretName: '$(acrsecret)'
+        dockerRegistryEndpoint: 'ACR Service Connection'
+    - task: KubernetesManifest@0 #this taks references the manifests we downloaded in the last step for the aks deployment
+      inputs:
+        action: 'deploy'
+        kubernetesServiceConnection: 'AKS Service Connection' 
+        namespace: 'default'
+        manifests: |
+          $(Pipeline.Workspace)/manifests/deployment.yml
+          $(Pipeline.Workspace)/manifests/service.yml
