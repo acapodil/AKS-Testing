@@ -8,7 +8,7 @@ resources:
 variables:
   imageRepo: sampleapp
   tag: '$(Build.BuildId)'
-  acrsecret: sampleappPW
+  acrsecret: sampleapp-pw
 
 stages:
 - stage: Build
