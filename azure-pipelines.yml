@@ -7,6 +7,7 @@ resources:
 
 variables:
   imageRepo: sampleapp
+  acrdevurl: capodilacr.azurecr.io
   tag: '$(Build.BuildId)'
   acrsecret: sampleapp-pw
 
@@ -28,7 +29,6 @@ stages:
         Dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
         tags: |
           $(tag)
-          latest
 #the below makes manifests able to be referenced throughout the rest of the template (other steps)
     - task: PublishPipelineArtifact@1
       inputs:
@@ -38,32 +38,35 @@ stages:
 - stage: Deploy
   dependsOn: Build
   jobs:
-  - job: Deploy
+  - deployment: Deploy
     displayName: Deploy to AKS
+    environment: 'k8sdev.default' #add environment name AND namespace!
     pool: 
       vmImage: ubuntu-latest
-    steps:
-#the below downloads the pipeline manifests we made available in the 'publishPiplelineArtifact' Task    
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'current'
-        artifactName: 'manifests'
-        targetPath: '$(Pipeline.Workspace)/manifests'
+    strategy: #implement canary or rolling deployments if needed
+      runOnce:
+        deploy:
+          steps:
+      #the below downloads the pipeline manifests we made available in the 'publishPiplelineArtifact' Task    
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              buildType: 'current'
+              artifactName: 'manifests'
+              targetPath: '$(Pipeline.Workspace)/manifests'
 
-#the below creates a kubernetes secret inside the AKS cluster
-    - task: KubernetesManifest@0
-      inputs:
-        action: 'createSecret'
-        kubernetesServiceConnection: 'AKS Service Connection'
-        namespace: 'default'
-        secretType: 'dockerRegistry'
-        secretName: '$(acrsecret)'
-        dockerRegistryEndpoint: 'ACR Service Connection'
-    - task: KubernetesManifest@0 #this taks references the manifests we downloaded in the last step for the aks deployment
-      inputs:
-        action: 'deploy'
-        kubernetesServiceConnection: 'AKS Service Connection' 
-        namespace: 'default'
-        manifests: |
-          $(Pipeline.Workspace)/manifests/deployment.yml
-          $(Pipeline.Workspace)/manifests/service.yml
+      #the below creates a kubernetes secret inside the AKS cluster
+          - task: KubernetesManifest@0
+            inputs:
+              action: 'createSecret'
+              namespace: 'default'
+              secretType: 'dockerRegistry'
+              secretName: '$(acrsecret)'
+              dockerRegistryEndpoint: 'ACR Service Connection'
+          - task: KubernetesManifest@0 #this taks references the manifests we downloaded in the last step for the aks deployment
+            inputs:
+              action: 'deploy'
+              namespace: 'default'
+              manifests: |
+                $(Pipeline.Workspace)/manifests/deployment.yml
+                $(Pipeline.Workspace)/manifests/service.yml
+              containers: '$(acrdevurl)/$(imageRepo):$(tag)'
