@@ -1,7 +1,7 @@
 apiVersion : apps/v1
 kind: Deployment
 metadata:
-  name: sampleapp 
+  name: sampleapp2
 spec:
   replicas: #replicaNo#
   selector:
@@ -10,10 +10,10 @@ spec:
   template:
     metadata:
       labels:
-        app: sampleapp 
+        app: sampleapp2
     spec:
       containers:
         - name: sampleapp 
-          image: capodilacr.azurecr.io/sampleapp
+          image: capodilacr.azurecr.io/sampleapp2
           ports:
           - containerPort: 80
