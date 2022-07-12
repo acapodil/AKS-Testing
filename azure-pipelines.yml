@@ -7,6 +7,7 @@ resources:
 
 variables:
   imageRepo: sampleapp
+  acrdevurl: capodilacr.azurecr.io
   tag: '$(Build.BuildId)'
   acrsecret: sampleapp-pw
 
@@ -28,7 +29,6 @@ stages:
         Dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
         tags: |
           $(tag)
-          latest
 #the below makes manifests able to be referenced throughout the rest of the template (other steps)
     - task: PublishPipelineArtifact@1
       inputs:
@@ -69,3 +69,4 @@ stages:
               manifests: |
                 $(Pipeline.Workspace)/manifests/deployment.yml
                 $(Pipeline.Workspace)/manifests/service.yml
+              containers: '$(acrdevurl)/$(imageRepo):$(tag)'
