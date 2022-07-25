@@ -1,71 +1,75 @@
-
-trigger: none
+trigger:
+- main
 
 resources:
 - repo: self
 
 variables:
-  imageRepo: sampleapp
-  acrdevurl: capodilacr.azurecr.io
+
+  # Container registry service connection established during pipeline creation
+  dockerRegistryServiceConnection: '35eda085-832e-40a5-b7ce-849491069f48'
+  imageRepository: 'dockerimage'
+  containerRegistry: 'capodilacr.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/app/Dockerfile'
   tag: '$(Build.BuildId)'
-  acrsecret: sampleapp-pw
+  imagePullSecret: 'capodilacr18404e79-auth'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
 
 stages:
 - stage: Build
-  displayName: Build image
+  displayName: Build stage
   jobs:
   - job: Build
     displayName: Build
     pool:
-      vmImage: ubuntu-latest
+      vmImage: $(vmImageName)
     steps:
     - task: Docker@2
-      displayName: Build Image and Push to ACR
+      displayName: Build and push an image to container registry
       inputs:
-        containerRegistry: 'ACR Service Connection'
-        repository: '$(imageRepo)'
-        command: 'buildAndPush'
-        Dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
-#the below makes manifests able to be referenced throughout the rest of the template (other steps)
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.SourcesDirectory)/kubernetes'
-        artifact: 'manifests'
-        publishLocation: 'pipeline'
+
+    - upload: manifests
+      artifact: manifests
+
 - stage: Deploy
+  displayName: Deploy stage
   dependsOn: Build
+
   jobs:
   - deployment: Deploy
-    displayName: Deploy to AKS
-    environment: 'k8sdev.default' #add environment name AND namespace!
-    pool: 
-      vmImage: ubuntu-latest
-    strategy: #implement canary or rolling deployments if needed
+    displayName: Deploy
+    pool:
+      vmImage: $(vmImageName)
+    environment: 'acapodilAKSTesting-7996.default'
+    strategy:
       runOnce:
         deploy:
           steps:
-      #the below downloads the pipeline manifests we made available in the 'publishPiplelineArtifact' Task    
-          - task: DownloadPipelineArtifact@2
-            inputs:
-              buildType: 'current'
-              artifactName: 'manifests'
-              targetPath: '$(Pipeline.Workspace)/manifests'
-
-      #the below creates a kubernetes secret inside the AKS cluster
           - task: KubernetesManifest@0
+            displayName: Create imagePullSecret
             inputs:
-              action: 'createSecret'
-              namespace: 'default'
-              secretType: 'dockerRegistry'
-              secretName: '$(acrsecret)'
-              dockerRegistryEndpoint: 'ACR Service Connection'
-          - task: KubernetesManifest@0 #this taks references the manifests we downloaded in the last step for the aks deployment
+              action: createSecret
+              secretName: $(imagePullSecret)
+              dockerRegistryEndpoint: $(dockerRegistryServiceConnection)
+
+          - task: KubernetesManifest@0
+            displayName: Deploy to Kubernetes cluster
             inputs:
-              action: 'deploy'
-              namespace: 'default'
+              action: deploy
               manifests: |
                 $(Pipeline.Workspace)/manifests/deployment.yml
                 $(Pipeline.Workspace)/manifests/service.yml
-              containers: '$(acrdevurl)/$(imageRepo):$(tag)'
+              imagePullSecrets: |
+                $(imagePullSecret)
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(tag)
+
