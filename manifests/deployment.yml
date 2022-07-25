@@ -1,19 +1,19 @@
 apiVersion : apps/v1
 kind: Deployment
 metadata:
-  name: sampleapp2 
+  name: sampleapp
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sampleapp2
+      app: sampleapp
   template:
     metadata:
       labels:
-        app: sampleapp2 
+        app: sampleapp
     spec:
       containers:
         - name: sampleapp2 
-          image: capodilacr.azurecr.io/sampleapp2
+          image: capodilacr.azurecr.io/dockerimage
           ports:
           - containerPort: 80
